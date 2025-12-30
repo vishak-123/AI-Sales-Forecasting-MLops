@@ -22,12 +22,7 @@ st.title("📊 AI Sales Forecasting Dashboard")
 st.caption("Upload ANY sales dataset and predict future sales")
 
 # ===============================
-# Detect Streamlit Cloud
-# ===============================
-IS_CLOUD = os.getenv("STREAMLIT_CLOUD", "false") == "true"
-
-# ===============================
-# Load Best Model
+# Load Trained Model
 # ===============================
 @st.cache_resource
 def load_model():
@@ -44,9 +39,7 @@ model = load_model()
 # ===============================
 st.sidebar.header("⚙️ Forecast Settings")
 
-forecast_days = st.sidebar.slider(
-    "Days to forecast", min_value=7, max_value=90, value=30
-)
+forecast_days = st.sidebar.slider("Days to forecast", 7, 90, 30)
 
 aggregation = st.sidebar.selectbox(
     "Aggregation Level",
@@ -65,49 +58,65 @@ if uploaded_file is None:
     st.stop()
 
 # ===============================
-# Read Uploaded CSV
+# Read CSV
 # ===============================
 try:
     raw_df = pd.read_csv(uploaded_file)
 except Exception as e:
-    st.error("Failed to read CSV file.")
+    st.error("❌ Unable to read CSV file.")
     st.exception(e)
     st.stop()
 
-st.subheader("🔍 Preview Uploaded Data")
+st.subheader("🔍 Uploaded Data Preview")
 st.dataframe(raw_df.head(), use_container_width=True)
 
 # ===============================
-# Column Mapping (KEY FEATURE)
+# Column Mapping
 # ===============================
 st.sidebar.header("🧩 Map Your Columns")
 
 columns = raw_df.columns.tolist()
 
 date_col = st.sidebar.selectbox("Select DATE column", columns)
-sales_col = st.sidebar.selectbox("Select SALES column (target)", columns)
+sales_col = st.sidebar.selectbox("Select SALES column (numeric)", columns)
 product_col = st.sidebar.selectbox(
     "Select PRODUCT column (optional)",
     ["None"] + columns
 )
 
 # ===============================
-# Normalize Columns Internally
+# Normalize Columns
 # ===============================
 df = raw_df.rename(columns={
     date_col: "date",
     sales_col: "units_sold"
 })
 
+# ---- DATE VALIDATION ----
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
-df = df.dropna(subset=["date", "units_sold"])
+if df["date"].isna().all():
+    st.error("❌ Selected DATE column is not a valid date. Please choose a proper date column.")
+    st.stop()
 
+# ---- NUMERIC VALIDATION ----
+df["units_sold"] = pd.to_numeric(df["units_sold"], errors="coerce")
+if df["units_sold"].isna().all():
+    st.error("❌ Selected SALES column is not numeric. Please choose a numeric sales column.")
+    st.stop()
+
+# ---- PRODUCT HANDLING ----
 if product_col != "None":
     df = df.rename(columns={product_col: "product_id"})
 else:
     df["product_id"] = "ALL_PRODUCTS"
 
+# ---- CLEAN DATA ----
+df = df.dropna(subset=["date", "units_sold"])
 df = df.sort_values("date")
+
+if len(df) < 20:
+    st.error("❌ Not enough valid data after cleaning (minimum ~20 rows required).")
+    st.stop()
 
 # ===============================
 # Product Selection
@@ -141,8 +150,8 @@ df["rolling_14"] = df["units_sold"].rolling(14).mean()
 
 df = df.dropna()
 
-if len(df) < 30:
-    st.error("❌ Not enough data after processing (need at least ~30 rows).")
+if len(df) < 10:
+    st.error("❌ Not enough data after feature engineering.")
     st.stop()
 
 # ===============================
@@ -158,7 +167,9 @@ if aggregation == "Weekly":
 elif aggregation == "Monthly":
     step = 30
 
-for _ in range(forecast_days // step):
+iterations = max(1, forecast_days // step)
+
+for _ in range(iterations):
     next_date = pd.to_datetime(current_date) + timedelta(days=step)
 
     features = {
@@ -218,11 +229,10 @@ plt.legend()
 st.pyplot(plt)
 
 # ===============================
-# Model Info
+# Info
 # ===============================
 st.subheader("🤖 Model Info")
 st.info(
-    "This forecast uses a pre-trained RandomForest model. "
-    "Training and MLflow tracking are done locally. "
-    "The cloud app performs inference only."
+    "The app performs inference using a pre-trained ML model. "
+    "Robust validation and cleaning are applied to handle real-world datasets safely."
 )
