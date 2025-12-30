@@ -33,12 +33,25 @@ def load_best_model():
 model = load_best_model()
 
 # ===============================
-# Load data
+# Load data (Cloud-safe)
 # ===============================
-df = pd.read_csv(
-    os.path.join(BASE_DIR, "data", "processed_sales_data.csv"),
-    parse_dates=["date"]
-)
+DATA_PATH = os.path.join(BASE_DIR, "data", "processed_sales_data.csv")
+
+if os.path.exists(DATA_PATH):
+    df = pd.read_csv(DATA_PATH, parse_dates=["date"])
+else:
+    st.warning("Processed data not found. Using demo data for cloud deployment.")
+
+    # Create minimal demo data
+    dates = pd.date_range(end=pd.Timestamp.today(), periods=90)
+    df = pd.DataFrame({
+        "date": dates,
+        "units_sold": [100 + i % 20 for i in range(90)],
+        "lag_7": [95 + i % 20 for i in range(90)],
+        "rolling_7": [100 + i % 15 for i in range(90)],
+        "rolling_14": [100 + i % 10 for i in range(90)],
+    })
+
 
 # ===============================
 # Sidebar
