@@ -6,6 +6,9 @@ import os
 import mlflow
 from datetime import timedelta
 
+IS_CLOUD = os.getenv("STREAMLIT_CLOUD", "false") == "true"
+
+
 # ===============================
 # Resolve project root
 # ===============================
@@ -103,26 +106,29 @@ st.pyplot(plt)
 # ===============================
 # MLflow metrics
 # ===============================
-st.subheader("📊 Model Performance (from MLflow)")
+st.subheader("📊 Model Performance")
 
-mlflow.set_tracking_uri(f"sqlite:///{os.path.join(BASE_DIR, 'mlflow.db')}")
-client = mlflow.tracking.MlflowClient()
+if IS_CLOUD:
+    st.info("MLflow metrics available in local environment only.")
+else:
+    mlflow.set_tracking_uri(f"sqlite:///{os.path.join(BASE_DIR, 'mlflow.db')}")
+    client = mlflow.tracking.MlflowClient()
 
-experiment = client.get_experiment_by_name("AI_Sales_Forecasting")
-runs = client.search_runs(
-    experiment_ids=[experiment.experiment_id],
-    order_by=["metrics.RMSE ASC"],
-    max_results=5
-)
+    experiment = client.get_experiment_by_name("AI_Sales_Forecasting")
+    runs = client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["metrics.RMSE ASC"],
+        max_results=5
+    )
 
-metrics_data = []
-for run in runs:
-    metrics_data.append({
-        "run_id": run.info.run_id[:8],
-        "RMSE": run.data.metrics.get("RMSE"),
-        "MAE": run.data.metrics.get("MAE"),
-        "n_estimators": run.data.params.get("n_estimators")
-    })
+    metrics_data = []
+    for run in runs:
+        metrics_data.append({
+            "run_id": run.info.run_id[:8],
+            "RMSE": run.data.metrics.get("RMSE"),
+            "MAE": run.data.metrics.get("MAE"),
+            "n_estimators": run.data.params.get("n_estimators")
+        })
 
-metrics_df = pd.DataFrame(metrics_data)
-st.dataframe(metrics_df)
+    metrics_df = pd.DataFrame(metrics_data)
+    st.dataframe(metrics_df)
