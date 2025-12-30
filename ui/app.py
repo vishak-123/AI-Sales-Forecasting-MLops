@@ -19,7 +19,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 st.set_page_config(page_title="AI Sales Forecasting", layout="wide")
 
 st.title("📊 AI Sales Forecasting Dashboard")
-st.caption("Multi-product forecasting with weekly & monthly aggregation")
+st.caption("Upload ANY sales dataset and predict future sales")
 
 # ===============================
 # Detect Streamlit Cloud
@@ -44,33 +44,68 @@ model = load_model()
 # ===============================
 st.sidebar.header("⚙️ Forecast Settings")
 
-forecast_days = st.sidebar.slider("Days to forecast", 7, 90, 30)
+forecast_days = st.sidebar.slider(
+    "Days to forecast", min_value=7, max_value=90, value=30
+)
 
 aggregation = st.sidebar.selectbox(
     "Aggregation Level",
     ["Daily", "Weekly", "Monthly"]
 )
 
-st.sidebar.header("📤 Upload Sales Data")
+st.sidebar.header("📤 Upload Dataset")
 
 uploaded_file = st.sidebar.file_uploader(
-    "Upload CSV (date, product_id, units_sold)",
+    "Upload CSV file",
     type=["csv"]
 )
 
-# ===============================
-# Load Data
-# ===============================
 if uploaded_file is None:
-    st.warning("⚠️ Please upload a CSV file to begin forecasting.")
+    st.info("👈 Upload a CSV file to begin forecasting.")
     st.stop()
 
-df = pd.read_csv(uploaded_file, parse_dates=["date"])
-
-required_cols = {"date", "product_id", "units_sold"}
-if not required_cols.issubset(df.columns):
-    st.error("CSV must contain date, product_id, and units_sold columns.")
+# ===============================
+# Read Uploaded CSV
+# ===============================
+try:
+    raw_df = pd.read_csv(uploaded_file)
+except Exception as e:
+    st.error("Failed to read CSV file.")
+    st.exception(e)
     st.stop()
+
+st.subheader("🔍 Preview Uploaded Data")
+st.dataframe(raw_df.head(), use_container_width=True)
+
+# ===============================
+# Column Mapping (KEY FEATURE)
+# ===============================
+st.sidebar.header("🧩 Map Your Columns")
+
+columns = raw_df.columns.tolist()
+
+date_col = st.sidebar.selectbox("Select DATE column", columns)
+sales_col = st.sidebar.selectbox("Select SALES column (target)", columns)
+product_col = st.sidebar.selectbox(
+    "Select PRODUCT column (optional)",
+    ["None"] + columns
+)
+
+# ===============================
+# Normalize Columns Internally
+# ===============================
+df = raw_df.rename(columns={
+    date_col: "date",
+    sales_col: "units_sold"
+})
+
+df["date"] = pd.to_datetime(df["date"], errors="coerce")
+df = df.dropna(subset=["date", "units_sold"])
+
+if product_col != "None":
+    df = df.rename(columns={product_col: "product_id"})
+else:
+    df["product_id"] = "ALL_PRODUCTS"
 
 df = df.sort_values("date")
 
@@ -78,10 +113,7 @@ df = df.sort_values("date")
 # Product Selection
 # ===============================
 products = df["product_id"].unique()
-selected_product = st.sidebar.selectbox(
-    "Select Product",
-    products
-)
+selected_product = st.sidebar.selectbox("Select Product", products)
 
 df = df[df["product_id"] == selected_product]
 
@@ -108,6 +140,10 @@ df["rolling_7"] = df["units_sold"].rolling(7).mean()
 df["rolling_14"] = df["units_sold"].rolling(14).mean()
 
 df = df.dropna()
+
+if len(df) < 30:
+    st.error("❌ Not enough data after processing (need at least ~30 rows).")
+    st.stop()
 
 # ===============================
 # Forecast Logic
@@ -153,7 +189,7 @@ forecast_df = pd.DataFrame(future_rows)
 # ===============================
 # Output
 # ===============================
-st.subheader(f"📅 Forecasted Sales — Product {selected_product}")
+st.subheader(f"📅 Forecast — {selected_product}")
 st.dataframe(forecast_df, use_container_width=True)
 
 st.download_button(
@@ -176,5 +212,17 @@ plt.plot(
     linestyle="--",
     label="Forecast"
 )
+plt.xlabel("Date")
+plt.ylabel("Units Sold")
 plt.legend()
 st.pyplot(plt)
+
+# ===============================
+# Model Info
+# ===============================
+st.subheader("🤖 Model Info")
+st.info(
+    "This forecast uses a pre-trained RandomForest model. "
+    "Training and MLflow tracking are done locally. "
+    "The cloud app performs inference only."
+)
