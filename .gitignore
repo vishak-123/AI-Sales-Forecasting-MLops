@@ -1,0 +1,19 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# MLflow artifacts
+mlruns/
+
+# Database
+mlflow.db
+
+# Data files (optional: keep or remove based on preference)
+data/*.csv
+
+# OS files
+.DS_Store
+Thumbs.db
